@@ -20,6 +20,25 @@ verbatim:
   append-only file inside the app sandbox. `IPA_LOG_TO_DOCUMENTS=1` at
   build time routes the file destination to `<sandbox>/Documents/` so
   Files.app can read it on a non-jailbroken device.
+- `binpatch.h` / `binpatch.m` — generic runtime helpers for the
+  "statically-patched `__TEXT` + `__DATA` hook-slot table" distribution
+  shape (the only viable iOS 18 sideload hooking shape; CSM kills
+  runtime inline rewrites). Two routines:
+  - `ipa_binpatch_find_image(name_substring)` walks `_dyld_image_count()`
+    and returns the matching image's `mach_header` VA (call from a 1–2 s
+    retry loop until non-zero).
+  - `ipa_binpatch_resolve_orig(imageBase, siteRVA, cavePayloadSize)`
+    decodes the `B <cave>` instruction the patcher wrote at the site
+    and returns the in-cave orig-trampoline VA so hook bodies can chain
+    back. Assumes the cave's last 8 bytes are
+    `<displaced prologue insn> + B <site+4>` — read `binpatch.h` for
+    the full cave-layout contract and a wiring example you can paste
+    into a new consumer.
+
+  Each consumer still owns the slot-table definition itself
+  (`void *g_<your>_hook_slot[N];` in `__DATA,__bss`), its
+  `KIOU_SLOT_*`-style enum, and the per-hook `publish_*()` helpers —
+  Common owns only the parts that look identical across every consumer.
 
 Pure runtime code. No Python tooling, no build scripts — the
 [IPA-Patch/Shared](https://github.com/IPA-Patch/Shared) repo holds those.
@@ -37,6 +56,8 @@ Then point the build at it. For a Theos tweak:
 
 ```makefile
 TWEAK_FILES   += Sources/Common/logging.m
+# Consumers that ship a statically-patched-IPA build also add:
+TWEAK_FILES   += Sources/Common/binpatch.m
 TWEAK_CFLAGS  += -ISources/Common
 ```
 
@@ -46,6 +67,7 @@ Each `.m` then includes the headers by their plain name:
 #import "il2cpp.h"
 #import "hookengine.h"
 #import "logging.h"
+#import "binpatch.h"   // only if you ship a statically-patched IPA
 ```
 
 ## Build-time flags
