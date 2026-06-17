@@ -4,7 +4,7 @@
 // ===========================================================================
 // logging.m — implementation backing logging.h.
 //
-// Three destinations on every file_log():
+// Three destinations on every IPALog():
 //   * NSLog              — Console.app, always on
 //   * os_log             — unified logging, subsystem-scoped
 //   * g_logSandbox file  — append-only file inside the host app's sandbox
@@ -28,7 +28,7 @@ static os_log_t  g_log        = NULL;
 static NSString *g_logSandbox = nil;
 static NSString *g_tag        = @"tweak";
 
-static void file_log_path(NSString *path, NSString *msg) {
+static void IPALogPath(NSString *path, NSString *msg) {
     if (!path) return;
     @try {
         NSDateFormatter *df = [[NSDateFormatter alloc] init];
@@ -46,15 +46,16 @@ static void file_log_path(NSString *path, NSString *msg) {
     } @catch (NSException *e) {}
 }
 
-void file_log(NSString *msg) {
+void IPALog(NSString *msg) {
+    if (!msg) msg = @"(null)";
     NSLog(@"[%@] %@", g_tag, msg);
     if (g_log) {
         os_log(g_log, "%{public}s", msg.UTF8String);
     }
-    if (g_logSandbox) file_log_path(g_logSandbox, msg);
+    if (g_logSandbox) IPALogPath(g_logSandbox, msg);
 }
 
-void logging_init(const char *subsystem) {
+void IPALoggingInit(const char *subsystem) {
     if (!subsystem) return;
 
     g_log = os_log_create(subsystem, "tweak");

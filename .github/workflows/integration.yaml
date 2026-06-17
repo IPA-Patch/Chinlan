@@ -1,0 +1,120 @@
+name: integration
+
+on:
+  push:
+    branches: [master, develop]
+  pull_request:
+    branches: [master, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  THEOS: ${{ github.workspace }}/theos
+  IOS_SDK_VERSION: "16.5"
+
+jobs:
+  commitlint:
+    name: Commit Lint
+    if: github.event.action != 'closed' || github.event.pull_request.merged != true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install commitlint
+        run: |
+          bun install conventional-changelog-conventionalcommits
+          bun install @commitlint/config-conventional
+          bun install commitlint@latest
+      - name: Validate current commit (last commit) with commitlint
+        if: github.event_name == 'push'
+        run: bunx commitlint --last --verbose
+      - name: Validate PR commits with commitlint
+        if: github.event_name == 'pull_request'
+        run: bunx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+
+  compile-check:
+    name: Compile Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install host build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+              curl git make xz-utils \
+              libtinfo6 libncurses6
+
+      - name: Cache Theos
+        id: theos-cache
+        uses: actions/cache@v5
+        with:
+          path: theos
+          # v3: switched to L1ghtmann's modern toolchain (was sbingner's
+          # libtinfo5-linked v10), so any previous cache is unusable.
+          key: theos-linux-${{ env.IOS_SDK_VERSION }}-v3
+
+      - name: Install Theos
+        if: steps.theos-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --recursive https://github.com/theos/theos.git "$THEOS"
+
+          ARCH=$(uname -m)
+          curl -fsSL \
+              "https://github.com/L1ghtmann/llvm-project/releases/latest/download/iOSToolchain-${ARCH}.tar.xz" \
+            | tar xJ -C "$THEOS/toolchain"
+
+          mkdir -p "$THEOS/sdks"
+          curl -L -o /tmp/sdk.tar.gz \
+              "https://github.com/theos/sdks/archive/master.tar.gz"
+          tar -xf /tmp/sdk.tar.gz -C /tmp
+          cp -R "/tmp/sdks-master/iPhoneOS${IOS_SDK_VERSION}.sdk" \
+                "$THEOS/sdks/"
+
+      - name: Verify Theos
+        run: |
+          test -d "$THEOS/sdks/iPhoneOS${IOS_SDK_VERSION}.sdk"
+          test -x "$THEOS/toolchain/linux/iphone/bin/clang"
+          "$THEOS/toolchain/linux/iphone/bin/clang" --version
+
+      - name: Compile-check headers and implementation files
+        # Verify that every public header and .m file parses clean under
+        # the same clang/SDK combination consumer tweaks use. Catches
+        # missing imports, typos in new function signatures, and API
+        # renames before they land in a consumer build.
+        #
+        # Headers cannot be passed directly as the main file with
+        # -x objective-c because clang emits -Wpragma-once-outside-header
+        # for #pragma once. Instead, generate a minimal wrapper .m that
+        # just includes each header, which is how they are used in practice.
+        run: |
+          CLANG="$THEOS/toolchain/linux/iphone/bin/clang"
+          SDK="$THEOS/sdks/iPhoneOS${IOS_SDK_VERSION}.sdk"
+          BASE_FLAGS="-target arm64-apple-ios13.0 -isysroot $SDK -I. -fobjc-arc -Werror -fsyntax-only"
+
+          # hookengine.h is excluded: it conditionally imports substrate.h or
+          # dobby.h depending on IPA_JAILED, neither of which ships with the
+          # Theos SDK. It is a compile-time shim owned by consumer tweaks.
+          for HDR in chinlan.h logging.h il2cpp.h; do
+            echo "==> $HDR"
+            WRAPPER=$(mktemp /tmp/check_XXXXXX.m)
+            echo "#import \"$HDR\"" > "$WRAPPER"
+            $CLANG $BASE_FLAGS -x objective-c "$WRAPPER"
+            rm -f "$WRAPPER"
+          done
+
+          for SRC in chinlan.m logging.m; do
+            echo "==> $SRC"
+            $CLANG $BASE_FLAGS -x objective-c "$SRC"
+          done

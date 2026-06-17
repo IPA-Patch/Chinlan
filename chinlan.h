@@ -5,8 +5,10 @@
 #include <stdint.h>
 
 // ===========================================================================
-// binpatch.h — generic runtime helpers for the "statically-patched
+// chinlan.h — generic runtime helpers for the "statically-patched
 // __TEXT + __DATA hook-slot table" distribution shape.
+//
+// CHINLAN: Cave Hook Injection for Native Latent ARM Notation
 //
 // WHO USES THIS
 // -------------
@@ -22,11 +24,11 @@
 //
 // This header is target-agnostic. The two things it gives you are:
 //
-//   1. ipa_binpatch_find_image()       — locate the host image by
-//                                        name substring at dylib
-//                                        constructor time.
+//   1. IPAChinlanFindImage()       — locate the host image by
+//                                    name substring at dylib
+//                                    constructor time.
 //
-//   2. ipa_binpatch_resolve_orig()     — given a site whose first 4
+//   2. IPAChinlanResolveOrig()     — given a site whose first 4
 //                                        bytes have been overwritten
 //                                        with `B <cave>`, recover
 //                                        the in-cave orig-trampoline
@@ -52,16 +54,16 @@
 //
 //   * Per-hook `publish_*()` helpers that:
 //       g_<your>_hook_slot[SLOT] = (void *)hook_function;
-//       orig_function = (typed *)ipa_binpatch_resolve_orig(
+//       orig_function = (typed *)IPAChinlanResolveOrig(
 //                           imageBase, SITE_RVA, MY_CAVE_PAYLOAD_SIZE);
 //
 //   * A small bootstrap helper that calls every publish_*() in some
-//     deterministic order once ipa_binpatch_find_image() returns a
+//     deterministic order once IPAChinlanFindImage() returns a
 //     non-zero base; spinning a 1–2 s retry timer until then.
 //
 // CAVE LAYOUT CONTRACT (binding for every consumer of this header)
 // ----------------------------------------------------------------
-// ipa_binpatch_resolve_orig() assumes the cave's LAST 8 bytes hold
+// IPAChinlanResolveOrig() assumes the cave's LAST 8 bytes hold
 // the orig-trampoline tail:
 //
 //     cave[payloadSize - 8 .. payloadSize - 4)  = <displaced prologue insn>
@@ -99,8 +101,8 @@
 // A consumer that only needs OBSERVATION (no value change, no
 // suppression) can use a fall-through cave instead: save x0..x7,
 // BLR, restore x0..x7, then the displaced insn + B <site + 4> at
-// the cave tail. ipa_binpatch_resolve_orig() still works because
-// the tail-8-bytes contract is unchanged. ipa_binpatch_resolve_orig
+// the cave tail. IPAChinlanResolveOrig() still works because
+// the tail-8-bytes contract is unchanged. IPAChinlanResolveOrig
 // makes no assumption about what the entry shape does — it only
 // reads the `B <cave>` at the site to find the cave VA and adds
 // `payloadSize - 8`.
@@ -118,15 +120,15 @@
 // static bar_t orig_bar;
 // void publish_foo_slot(uintptr_t base) {
 //     g_my_hook_slot[MY_SLOT_FOO] = (void *)hook_foo;
-//     orig_foo = (foo_t)ipa_binpatch_resolve_orig(
+//     orig_foo = (foo_t)IPAChinlanResolveOrig(
 //                    base, RVA_FOO, MY_CAVE_PAYLOAD_SIZE);
 // }
 // // ...same shape for bar.
 //
 // // 3) Bootstrap from the dylib constructor.
 // __attribute__((constructor)) static void init(void) {
-//     logging_init("com.example.tweak.foo");
-//     uintptr_t base = ipa_binpatch_find_image("TargetFramework");
+//     IPALoggingInit("com.example.tweak.foo");
+//     uintptr_t base = IPAChinlanFindImage("TargetFramework");
 //     if (base) {
 //         publish_foo_slot(base);
 //         publish_bar_slot(base);
@@ -144,7 +146,7 @@
 // expected prologue bytes, and the cave payload builder. The patcher
 // rewrites each site's first 4 bytes with `B <cave>` and emits the
 // cave bytes into the binary's free __TEXT zero-fill tail. See
-// `docs/binpatch.md` in any consumer repo for the operator flow.
+// `docs/chinlan.md` in any consumer repo for the operator flow.
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
@@ -160,7 +162,7 @@
 // _dyld_get_image_name(i); pass e.g. "UnityFramework". A NULL or
 // empty substring is invalid and returns 0.
 // ---------------------------------------------------------------------------
-uintptr_t ipa_binpatch_find_image(const char *imageNameSubstring);
+uintptr_t IPAChinlanFindImage(const char *imageNameSubstring);
 
 // ---------------------------------------------------------------------------
 // Decode the `B <cave>` instruction the patcher wrote at
@@ -169,7 +171,7 @@ uintptr_t ipa_binpatch_find_image(const char *imageNameSubstring);
 //
 // Parameters
 //   imageBase        : mach_header VA of the image holding the site
-//                      (the value ipa_binpatch_find_image returned).
+//                      (the value IPAChinlanFindImage returned).
 //   siteRVA          : RVA, relative to imageBase, of the site's first
 //                      4 bytes — i.e. where the patcher wrote
 //                      `B <cave>` over the original prologue insn.
@@ -187,6 +189,6 @@ uintptr_t ipa_binpatch_find_image(const char *imageNameSubstring);
 // This is a read-only operation. It never modifies the binary or the
 // slot table.
 // ---------------------------------------------------------------------------
-uintptr_t ipa_binpatch_resolve_orig(uintptr_t imageBase,
-                                    uintptr_t siteRVA,
-                                    size_t    cavePayloadSize);
+uintptr_t IPAChinlanResolveOrig(uintptr_t imageBase,
+                                uintptr_t siteRVA,
+                                size_t    cavePayloadSize);

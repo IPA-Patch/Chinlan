@@ -34,9 +34,9 @@
 // carries UIFileSharingEnabled + LSSupportsOpeningDocumentsInPlace, so
 // non-jailbroken operators can read the log over the Files app.
 //
-// Calls before logging_init() fall back to NSLog only; the file/os_log
-// destinations come up once logging_init() has run.
+// Calls before IPALoggingInit() fall back to NSLog only; the file/os_log
+// destinations come up once IPALoggingInit() has run.
 // ===========================================================================
 
-void file_log(NSString *msg);
-void logging_init(const char *subsystem);
+void IPALog(NSString *msg);
+void IPALoggingInit(const char *subsystem);

@@ -1,4 +1,4 @@
-#import "binpatch.h"
+#import "chinlan.h"
 #import "logging.h"
 
 #import <mach-o/dyld.h>
@@ -6,8 +6,8 @@
 #import <string.h>
 
 // ===========================================================================
-// binpatch.m — implementation of the generic helpers declared in
-// binpatch.h. Both routines are read-only (they look at __TEXT bytes
+// chinlan.m — implementation of the generic helpers declared in
+// chinlan.h. Both routines are read-only (they look at __TEXT bytes
 // the patcher has already written; they don't write anything). See the
 // header for the cave-layout contract and for an end-to-end wiring
 // example.
@@ -18,14 +18,14 @@
 // in Common/il2cpp.h); duplicated here as a private static so this TU
 // stays self-contained and the helper can be linked into a target
 // that doesn't include il2cpp.h.
-static inline int ipa_binpatch_ptr_ok(uintptr_t v) {
+static inline int IPAChinlanPtrOk(uintptr_t v) {
     if (v == 0) return 0;
     if (v < 0x1000) return 0;
     if (v >= 0x0001000000000000ULL) return 0;
     return 1;
 }
 
-uintptr_t ipa_binpatch_find_image(const char *imageNameSubstring) {
+uintptr_t IPAChinlanFindImage(const char *imageNameSubstring) {
     if (!imageNameSubstring || imageNameSubstring[0] == '\0') return 0;
 
     uint32_t imgCount = _dyld_image_count();
@@ -38,14 +38,14 @@ uintptr_t ipa_binpatch_find_image(const char *imageNameSubstring) {
     return 0;
 }
 
-uintptr_t ipa_binpatch_resolve_orig(uintptr_t imageBase,
-                                    uintptr_t siteRVA,
-                                    size_t    cavePayloadSize) {
+uintptr_t IPAChinlanResolveOrig(uintptr_t imageBase,
+                                uintptr_t siteRVA,
+                                size_t    cavePayloadSize) {
     if (!imageBase || !siteRVA) return 0;
     if (cavePayloadSize < 8 || (cavePayloadSize % 4) != 0) return 0;
 
     uintptr_t siteVA = imageBase + siteRVA;
-    if (!ipa_binpatch_ptr_ok(siteVA)) return 0;
+    if (!IPAChinlanPtrOk(siteVA)) return 0;
 
     uint32_t insn = *(const uint32_t *)siteVA;
 
@@ -54,10 +54,10 @@ uintptr_t ipa_binpatch_resolve_orig(uintptr_t imageBase,
     // something the runtime doesn't know how to read) — bail out so
     // the caller leaves its typed `orig_*` pointer NULL.
     if ((insn >> 26) != 0x05) {
-        file_log([NSString stringWithFormat:
-                  @"[ipa_binpatch] resolve_orig: siteRVA=0x%lx "
-                  @"insn=0x%08x not a B imm26",
-                  (unsigned long)siteRVA, insn]);
+        IPALog([NSString stringWithFormat:
+                @"[Chinlan] ResolveOrig: siteRVA=0x%lx "
+                @"insn=0x%08x not a B imm26",
+                (unsigned long)siteRVA, insn]);
         return 0;
     }
 
@@ -67,7 +67,7 @@ uintptr_t ipa_binpatch_resolve_orig(uintptr_t imageBase,
     intptr_t byteOffset = (intptr_t)imm26 * 4;
 
     uintptr_t caveVA = (uintptr_t)((intptr_t)siteVA + byteOffset);
-    if (!ipa_binpatch_ptr_ok(caveVA)) return 0;
+    if (!IPAChinlanPtrOk(caveVA)) return 0;
 
     return caveVA + (uintptr_t)cavePayloadSize - 8;
 }
