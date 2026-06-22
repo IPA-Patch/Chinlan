@@ -10,12 +10,14 @@
 //   * os_log             — unified logging, subsystem-scoped
 //   * g_logSandbox file  — append-only file inside the host app's sandbox
 //
-// File destination layout — every flavor writes into a `logs/` subdirectory
+// File destination layout — every flavor writes into a `Logs/` subdirectory
 // of its base path (created on init), so operators can grab the whole
 // directory at once instead of fishing individual files out of tmp/ or
-// Documents/. The default base is NSTemporaryDirectory() (which resolves to
+// Documents/. The directory name follows iOS's own sandbox PascalCase
+// convention (sibling to `Documents/`, `Library/`). The default base is
+// NSTemporaryDirectory() (which resolves to
 // /var/mobile/Containers/Data/Application/<UUID>/tmp/), so the full path is
-//   .../tmp/logs/<tag>.log
+//   .../tmp/Logs/<tag>.log
 //
 // When IPA_LOG_TO_DOCUMENTS=1 is defined at build time, the base moves to
 // <sandbox>/Documents/ instead. That directory is exposed through Files.app
@@ -167,11 +169,13 @@ void IPALoggingInit(const char *subsystem) {
     NSString *base = NSTemporaryDirectory();
 #endif
 
-    // Group every flavor's logs under `<base>/logs/` so the rotated set
+    // Group every flavor's logs under `<base>/Logs/` so the rotated set
     // (<tag>.log, <tag>.1.log, <tag>.2.log…) lives in one folder operators
-    // can grab in one shot. Best-effort mkdir — a stale symlink or perms
-    // issue downgrades us to writing into the base directly.
-    NSString *logsDir = [base stringByAppendingPathComponent:@"logs"];
+    // can grab in one shot. PascalCase matches iOS's own sandbox
+    // conventions (`Documents/`, `Library/`, etc.). Best-effort mkdir —
+    // a stale symlink or perms issue downgrades us to writing into the
+    // base directly.
+    NSString *logsDir = [base stringByAppendingPathComponent:@"Logs"];
     NSFileManager *fm = [NSFileManager defaultManager];
     NSError *mkdirErr = nil;
     BOOL ok = [fm createDirectoryAtPath:logsDir
