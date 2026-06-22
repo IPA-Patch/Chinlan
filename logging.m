@@ -206,4 +206,9 @@ void IPALoggingInit(const char *subsystem) {
     }
 
     g_logSandbox = [logsDir stringByAppendingPathComponent:filename];
+#ifndef FINAL_RELEASE
+    // Let the log server replay the tail of this file to clients that connect
+    // after launch — they see history instead of only the live stream.
+    IPALogServerSetReplayPath(g_logSandbox);
+#endif
 }

@@ -40,6 +40,12 @@
 #define LOG_SERVER_RECV_CHUNK       256
 #define LOG_SERVER_QUEUE_DEPTH_MAX  256
 
+// How many bytes from the end of the log file to replay to a new client.
+// Aligned up to the next newline boundary so no partial lines are sent.
+#ifndef IPA_LOG_REPLAY_BYTES
+#define IPA_LOG_REPLAY_BYTES (100 * 1024)
+#endif
+
 // ---------------------------------------------------------------------------
 // Module state.
 // ---------------------------------------------------------------------------
@@ -52,6 +58,10 @@ static int               g_clients[IPA_LOG_SERVER_MAX_CLIENTS];
 static int               g_clientCount = 0;
 static _Atomic uint32_t  g_dropped     = 0;
 static _Atomic uint32_t  g_pending     = 0;
+
+// Log file path for replay-on-connect. Set via IPALogServerSetReplayPath().
+// Accessed on g_queue only.
+static NSString         *g_replayPath  = nil;
 
 // ---------------------------------------------------------------------------
 // Socket helpers.
@@ -86,6 +96,49 @@ static BOOL ls_send_all(int fd, const uint8_t *buf, size_t len) {
 }
 
 // ---------------------------------------------------------------------------
+// Replay history — send the tail of the log file to a freshly connected
+// client, then return so the caller can add it to the live-stream set.
+// Runs on g_queue so g_replayPath access is safe.
+// ---------------------------------------------------------------------------
+static void ls_replay_to(int fd) {
+    if (!g_replayPath) return;
+
+    int fileFd = open(g_replayPath.UTF8String, O_RDONLY | O_NONBLOCK);
+    if (fileFd < 0) return;
+
+    off_t fileSize = lseek(fileFd, 0, SEEK_END);
+    if (fileSize <= 0) { close(fileFd); return; }
+
+    // Start IPA_LOG_REPLAY_BYTES before EOF (or at BOF if file is smaller).
+    off_t startOff = (fileSize > (off_t)IPA_LOG_REPLAY_BYTES)
+        ? fileSize - (off_t)IPA_LOG_REPLAY_BYTES
+        : 0;
+
+    if (lseek(fileFd, startOff, SEEK_SET) < 0) { close(fileFd); return; }
+
+    // Skip forward to the next newline so we don't send a partial first line.
+    if (startOff > 0) {
+        char ch;
+        while (read(fileFd, &ch, 1) == 1 && ch != '\n') {}
+    }
+
+    // Stream the rest to the client in chunks.
+    uint8_t buf[4096];
+    ssize_t n;
+    while ((n = read(fileFd, buf, sizeof(buf))) > 0) {
+        const uint8_t *p = buf;
+        size_t rem = (size_t)n;
+        while (rem > 0) {
+            ssize_t sent = send(fd, p, rem, 0);
+            if (sent <= 0) { close(fileFd); return; }
+            p   += sent;
+            rem -= (size_t)sent;
+        }
+    }
+    close(fileFd);
+}
+
+// ---------------------------------------------------------------------------
 // Client management — must be called on g_queue.
 // ---------------------------------------------------------------------------
 static void ls_add_client(int fd) {
@@ -96,6 +149,9 @@ static void ls_add_client(int fd) {
         close(fd);
         return;
     }
+    // Replay history before admitting to the live stream so the client sees
+    // events that happened before it connected.
+    ls_replay_to(fd);
     g_clients[g_clientCount++] = fd;
     IPALog([NSString stringWithFormat:
               @"[LOGSVR] client connected fd=%d (%d/%d)",
@@ -148,6 +204,11 @@ static void ls_handle_accept(void) {
 // ---------------------------------------------------------------------------
 // Public API.
 // ---------------------------------------------------------------------------
+void IPALogServerSetReplayPath(NSString *path) {
+    if (!g_queue) return;
+    dispatch_async(g_queue, ^{ g_replayPath = [path copy]; });
+}
+
 void IPALogServerStart(uint16_t port) {
     if (g_listenFd >= 0) return;    // already running
 
