@@ -84,6 +84,27 @@ MSHookFunction is more flexible and easier to set up on a jailbroken device. Chi
 Pure runtime code. No Python tooling, no build scripts — the
 [IPA-Patch/Shared](https://github.com/IPA-Patch/Shared) repo holds those.
 
+## Cave kinds
+
+Chinlan's runtime contract is shape-agnostic — `IPAChinlanResolveOrig`
+only cares that the cave's last 8 bytes are
+`<displaced prologue insn> + B <site+4>`. Across IPA-Patch tweaks two
+cave shapes have stabilised:
+
+- **`observer`** — peek before orig runs, then the cave executes orig
+  automatically. Cheap default for logging / state caching / one-way
+  observation.
+- **`entry`** — REPLACE orig entirely. The hook receives pristine
+  `x0..x7`, decides whether and how to invoke orig (through the
+  cave-bypass entry exposed at `cave_va + 0x4C`), and the cave's RET
+  propagates the hook's `x0` straight back to the caller. Required when
+  you need to override the return value, substitute argument registers,
+  or hook a 7+ integer-arg function (observer caves clobber `W6`).
+
+[docs/CAVES.md](docs/CAVES.md) carries the full capability matrix,
+annotated cave-byte layouts, and worked recipe / hook / dispatcher
+examples for both kinds.
+
 ## Usage
 
 Add as a git submodule inside `Sources/`:
