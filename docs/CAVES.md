@@ -22,7 +22,7 @@ both sides correctly.
 | Override the return value | ❌ (cave executes orig _after_ the hook) | ✅ (cave's tail is `RET`; the hook's `x0` propagates straight back) |
 | Substitute argument registers | ❌ (cave restores `x0..x7` before `B orig+4`) | ✅ (cave passes pristine `x0..x7` through and never restores) |
 | Hooks routed through a single shared dispatcher | ✅ (one slot, identified by `W6 = hook_id`) | ❌ (each site has its own slot under an entry-slot table) |
-| `W6` (= 7th C arg) survives across the cave | ❌ (clobbered with `hook_id`) | ✅ (only `W9` is touched, an unused arg-9+ slot under AAPCS64) |
+| `W6` (= 7th C arg) survives across the cave | ❌ (clobbered with `hook_id`) | ✅ (only `W9` is touched, and `x9–x15` are AAPCS64 call-clobbered scratch — never an argument slot) |
 | Cave-bypass tail at `cave_va + 0x4C` still valid | ✅ | ✅ |
 
 ### Decision flow
@@ -67,7 +67,7 @@ use that to run orig without re-entering the cave.
 0x18  STP X6,  X7,  [SP, #0x60]
 0x1C  MOV X29, SP                     ; canonical frame setup
 0x20  ADRP X16, page(HOOK_SLOT_RVA)
-0x24  LDR  X16, [X16, #lo12(SLOT)]    ; load dispatcher pointer
+0x24  LDR  X16, [X16, #lo12(HOOK_SLOT_RVA)] ; load dispatcher pointer
 0x28  MOVZ W6,  #hook_id              ; pass hook id via W6 (clobbers arg #7!)
 0x2C  BLR  X16                        ; dispatcher(x0..x5, hook_id_in_w6, x7)
 0x30  LDP  X6,  X7,  [SP, #0x60]      ; restore x0..x7 — orig must see originals
@@ -93,8 +93,8 @@ AAPCS64. Hook bodies with up to six args are safe; anything more needs
 ```text
 0x00  STP X29, X30, [SP, #-0x10]!     ; minimal frame — no arg saving
 0x04  ADRP X16, page(entry_slot_va)
-0x08  LDR  X16, [X16, #lo12(slot)]    ; load this site's hook fn ptr
-0x0C  MOVZ W9,  #slot_index           ; diagnostic; hook may ignore (W9 = arg #9)
+0x08  LDR  X16, [X16, #lo12(entry_slot_va)] ; load this site's hook fn ptr
+0x0C  MOVZ W9,  #slot_index           ; diagnostic; hook may ignore (W9 is AAPCS64 call-clobbered scratch, not an argument slot)
 0x10  BLR  X16                        ; hook(x0..x7) — return ends up in x0
 0x14  LDP  X29, X30, [SP], #0x10
 0x18  RET                             ; orig is NOT executed by the cave
@@ -263,8 +263,8 @@ pointer is dropped on the way into orig.
 - **`(void)useArg;` on JB.** Consumers that share their hook body across
   JB and chinlan often have `KIOU_CALL_ORIG_RET(RET_T, ORIG, ...)`
   expand to a no-op on chinlan (the cave runs orig itself). Without a
-  `(void)useArg;` or a `#if !KIOU_CHINLAN` wrapper, `-Werror=unused-
-  variable` will trip on the chinlan build.
+  `(void)useArg;` or a `#if !KIOU_CHINLAN` wrapper,
+  `-Werror=unused-variable` will trip on the chinlan build.
 - **`KIOU_CALL_ORIG_RET` drops varargs on chinlan.** Don't rely on it
   to propagate substituted arguments into orig on the chinlan build —
   for that case you have to call the bypass entry yourself (`entry` cave
