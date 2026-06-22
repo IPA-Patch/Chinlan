@@ -61,10 +61,19 @@ MSHookFunction is more flexible and easier to set up on a jailbroken device. Chi
   the rootless-jailbreak build (`libsubstrate`) and the
   sideload-injected build (`libdobby.a` statically linked).
 - `logging.h` / `logging.m` — `IPALog` + `IPALoggingInit`. Multiplexes
-  every log line to NSLog, `os_log` (subsystem-scoped), and an
-  append-only file inside the app sandbox. `IPA_LOG_TO_DOCUMENTS=1` at
-  build time routes the file destination to `<sandbox>/Documents/` so
-  Files.app can read it on a non-jailbroken device.
+  every log line to NSLog, `os_log` (subsystem-scoped), an append-only
+  file inside the app sandbox, and — when `FINAL_RELEASE` is not defined —
+  a LAN-visible TCP log stream on `0.0.0.0:18082`. `IPA_LOG_TO_DOCUMENTS=1`
+  at build time routes the file destination to `<sandbox>/Documents/` so
+  Files.app can read it on a non-jailbroken device. The TCP stream can be
+  tailed live from another machine on the same network with:
+
+  ```sh
+  nc <device-ip> 18082
+  ```
+
+  The LAN stream is debug-only and is compiled out entirely when
+  `FINAL_RELEASE=1`.
 - `chinlan.h` / `chinlan.m` — the core Chinlan helpers:
   - `IPAChinlanFindImage(name_substring)` walks `_dyld_image_count()`
     and returns the matching image's `mach_header` VA (call from a 1–2 s
@@ -116,6 +125,7 @@ Include in source files:
 |---|---|
 | `IPA_JAILED` | `hookengine.h` uses Dobby (statically linked) instead of `libsubstrate`. |
 | `IPA_LOG_TO_DOCUMENTS` | `logging.m` writes the file log to `<sandbox>/Documents/<tag>.log` instead of `tmp/`. |
+| `FINAL_RELEASE` | `logging.m` / `logserver.m` remove the LAN TCP log stream entirely; only NSLog, `os_log`, and the sandbox file sink remain. |
 
 ## License
 
