@@ -34,6 +34,13 @@
 // subsequent calls after the first are silent no-ops.
 void IPALogServerStart(uint16_t port);
 
+// Register the sandbox log file path for replay-on-connect.
+// Must be called after IPALogServerStart(). When a new client connects,
+// the server tails the last IPA_LOG_REPLAY_BYTES (default 100 KB) of this
+// file and sends them before switching to the live stream. Safe to call
+// with nil to disable replay.
+void IPALogServerSetReplayPath(NSString *path);
+
 // Broadcast a log line to all connected clients. Called from IPALog().
 // line must be non-nil; the implementation appends a trailing newline if
 // absent. Returns immediately when no clients are connected.
