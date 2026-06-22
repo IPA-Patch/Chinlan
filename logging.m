@@ -1,13 +1,23 @@
 #import "logging.h"
 #import <os/log.h>
+#ifndef FINAL_RELEASE
+#import "logserver.h"
+#endif
 
 // ===========================================================================
 // logging.m — implementation backing logging.h.
 //
-// Three destinations on every IPALog():
+// Three destinations on every IPALog(), plus a fourth in debug builds:
 //   * NSLog              — Console.app, always on
 //   * os_log             — unified logging, subsystem-scoped
 //   * g_logSandbox file  — append-only file inside the host app's sandbox
+//   * LAN TCP            — 0.0.0.0:18082 when FINAL_RELEASE is undefined
+
+// The LAN stream exists so operators can tail logs from a PC on the same
+// network. Debug builds only; FINAL_RELEASE strips the sink back out.
+
+// The TCP stream is implemented in logserver.m so this file stays the
+// shared logging facade rather than becoming a socket server itself.
 //
 // File destination defaults to NSTemporaryDirectory()/<tag>.log, which
 // resolves to /var/mobile/Containers/Data/Application/<UUID>/tmp/<tag>.log.
@@ -53,6 +63,9 @@ void IPALog(NSString *msg) {
         os_log(g_log, "%{public}s", msg.UTF8String);
     }
     if (g_logSandbox) IPALogPath(g_logSandbox, msg);
+#ifndef FINAL_RELEASE
+    IPALogServerPush(msg);
+#endif
 }
 
 void IPALoggingInit(const char *subsystem) {
@@ -71,6 +84,9 @@ void IPALoggingInit(const char *subsystem) {
     }
 
     NSString *filename = [g_tag stringByAppendingString:@".log"];
+#ifndef FINAL_RELEASE
+    IPALogServerStart(IPA_LOG_SERVER_DEFAULT_PORT);
+#endif
 #if defined(IPA_LOG_TO_DOCUMENTS) && IPA_LOG_TO_DOCUMENTS
     // Files.app-exposed log path. Used by the statically-patched build so
     // operators on non-jailbroken devices can read the log without SSH.

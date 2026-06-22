@@ -5,6 +5,14 @@
 // ===========================================================================
 // logging.h — NSLog + os_log + sandbox file log destination.
 //
+// In debug builds (i.e. when FINAL_RELEASE is not defined), logging.m also
+// starts a LAN-visible TCP log stream on 0.0.0.0:18082. This lets jailed /
+// non-SSH operators tail logs live from a PC on the same network with
+// `nc <device-ip> 18082`, without changing the existing file destinations.
+
+// Because this is intentionally network-visible, FINAL_RELEASE removes the
+// stream entirely and leaves only NSLog / os_log / sandbox-file logging.
+//
 // Implementation in logging.m. Each tweak picks its own os_log subsystem at
 // init so console output stays distinguishable when several tweaks are
 // loaded into the same process. Typical subsystem strings follow
