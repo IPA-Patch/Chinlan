@@ -61,10 +61,19 @@ MSHookFunction is more flexible and easier to set up on a jailbroken device. Chi
   the rootless-jailbreak build (`libsubstrate`) and the
   sideload-injected build (`libdobby.a` statically linked).
 - `logging.h` / `logging.m` — `IPALog` + `IPALoggingInit`. Multiplexes
-  every log line to NSLog, `os_log` (subsystem-scoped), and an
-  append-only file inside the app sandbox. `IPA_LOG_TO_DOCUMENTS=1` at
-  build time routes the file destination to `<sandbox>/Documents/` so
-  Files.app can read it on a non-jailbroken device.
+  every log line to NSLog, `os_log` (subsystem-scoped), an append-only
+  file inside the app sandbox, and — when `FINAL_RELEASE` is not defined —
+  a LAN-visible TCP log stream on `0.0.0.0:18082`. `IPA_LOG_TO_DOCUMENTS=1`
+  at build time routes the file destination to `<sandbox>/Documents/` so
+  Files.app can read it on a non-jailbroken device. The TCP stream can be
+  tailed live from another machine on the same network with:
+
+  ```sh
+  nc <device-ip> 18082
+  ```
+
+  The LAN stream is debug-only and is compiled out entirely when
+  `FINAL_RELEASE=1`.
 - `chinlan.h` / `chinlan.m` — the core Chinlan helpers:
   - `IPAChinlanFindImage(name_substring)` walks `_dyld_image_count()`
     and returns the matching image's `mach_header` VA (call from a 1–2 s
@@ -83,6 +92,27 @@ MSHookFunction is more flexible and easier to set up on a jailbroken device. Chi
 
 Pure runtime code. No Python tooling, no build scripts — the
 [IPA-Patch/Shared](https://github.com/IPA-Patch/Shared) repo holds those.
+
+## Cave kinds
+
+Chinlan's runtime contract is shape-agnostic — `IPAChinlanResolveOrig`
+only cares that the cave's last 8 bytes are
+`<displaced prologue insn> + B <site+4>`. Across IPA-Patch tweaks two
+cave shapes have stabilised:
+
+- **`observer`** — peek before orig runs, then the cave executes orig
+  automatically. Cheap default for logging / state caching / one-way
+  observation.
+- **`entry`** — REPLACE orig entirely. The hook receives pristine
+  `x0..x7`, decides whether and how to invoke orig (through the
+  cave-bypass entry exposed at `cave_va + 0x4C`), and the cave's RET
+  propagates the hook's `x0` straight back to the caller. Required when
+  you need to override the return value, substitute argument registers,
+  or hook a 7+ integer-arg function (observer caves clobber `W6`).
+
+[docs/CAVES.md](docs/CAVES.md) carries the full capability matrix,
+annotated cave-byte layouts, and worked recipe / hook / dispatcher
+examples for both kinds.
 
 ## Usage
 
@@ -116,6 +146,7 @@ Include in source files:
 |---|---|
 | `IPA_JAILED` | `hookengine.h` uses Dobby (statically linked) instead of `libsubstrate`. |
 | `IPA_LOG_TO_DOCUMENTS` | `logging.m` writes the file log to `<sandbox>/Documents/<tag>.log` instead of `tmp/`. |
+| `FINAL_RELEASE` | `logging.m` / `logserver.m` remove the LAN TCP log stream entirely; only NSLog, `os_log`, and the sandbox file sink remain. |
 
 ## License
 
