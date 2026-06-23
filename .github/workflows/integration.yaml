@@ -16,6 +16,18 @@ env:
   IOS_SDK_VERSION: "16.5"
 
 jobs:
+  guard-source-branch:
+    name: Guard master source branch
+    if: github.event_name == 'pull_request' && github.base_ref == 'master'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject non-develop source for master PRs
+        run: |
+          if [ "${{ github.head_ref }}" != "develop" ]; then
+            echo "::error::PRs to master must come from the develop branch (got: ${{ github.head_ref }})"
+            exit 1
+          fi
+
   commitlint:
     name: Commit Lint
     if: github.event.action != 'closed' || github.event.pull_request.merged != true
