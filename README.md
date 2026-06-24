@@ -1,4 +1,15 @@
-# Chinlan - Cave Hook Injection for Native Latent ARM Notation
+<h1 align="center">Chinlan</h1>
+
+<p align="center">
+  <img src="icon.webp" alt="Chinlan icon" width="180" height="180" />
+</p>
+
+<p align="center">
+  <em><strong>C</strong>ave <strong>H</strong>ook <strong>I</strong>njection for
+  <strong>N</strong>ative <strong>L</strong>atent <strong>A</strong>RM
+  <strong>N</strong>otation — shared C/ObjC runtime for
+  <a href="https://github.com/IPA-Patch">IPA-Patch</a> tweaks.</em>
+</p>
 
 <p align="center">
   <img alt="license" src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" />
